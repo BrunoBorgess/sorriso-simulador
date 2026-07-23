@@ -62,39 +62,46 @@ export async function POST(req: NextRequest) {
           {
             parts: [
               { text: prompt },
-              { inline_data: { mime_type: mimeType, data: base64Image } },
+              { inlineData: { mimeType, data: base64Image } },
             ],
           },
         ],
+        // ESSENCIAL: sem isso o modelo pode responder só com texto e nunca com imagem
+        generationConfig: {
+          responseModalities: ['IMAGE'],
+        },
       }),
     });
 
+    const data = await geminiResponse.json();
+
     if (!geminiResponse.ok) {
-      const errText = await geminiResponse.text();
-      console.error('Erro da Gemini API:', errText);
+      console.error('Erro da Gemini API:', JSON.stringify(data));
       return NextResponse.json(
-        { error: 'Não foi possível gerar a simulação agora. Tente novamente.' },
+        { error: data?.error?.message || 'Não foi possível gerar a simulação agora.' },
         { status: 502 }
       );
     }
-
-    const data = await geminiResponse.json();
 
     // Procura a parte da resposta que contém a imagem gerada
     const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const imagePart = parts.find((p: any) => p.inlineData || p.inline_data);
-    const inline = imagePart?.inlineData ?? imagePart?.inline_data;
+    const imagePart = parts.find((p: any) => p.inlineData);
+    const textPart = parts.find((p: any) => p.text)?.text;
 
-    if (!inline?.data) {
-      console.error('Resposta sem imagem:', JSON.stringify(data).slice(0, 500));
+    if (!imagePart?.inlineData?.data) {
+      console.error('Resposta sem imagem. Texto retornado:', textPart, JSON.stringify(data).slice(0, 800));
       return NextResponse.json(
-        { error: 'A IA não retornou uma imagem válida. Tente outra foto.' },
+        {
+          error: textPart
+            ? `A IA não gerou imagem, ela respondeu: "${textPart}"`
+            : 'A IA não retornou uma imagem válida. Tente outra foto.',
+        },
         { status: 502 }
       );
     }
 
-    const outMime = inline.mimeType ?? inline.mime_type ?? 'image/png';
-    return NextResponse.json({ image: `data:${outMime};base64,${inline.data}` });
+    const outMime = imagePart.inlineData.mimeType ?? 'image/png';
+    return NextResponse.json({ image: `data:${outMime};base64,${imagePart.inlineData.data}` });
   } catch (err) {
     console.error('Erro inesperado em /api/simulate:', err);
     return NextResponse.json(
