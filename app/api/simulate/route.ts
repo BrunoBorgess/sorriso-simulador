@@ -3,33 +3,35 @@ import { NextRequest, NextResponse } from 'next/server';
 // Precisa rodar em ambiente Node (não Edge) para lidar com FormData/arquivos
 export const runtime = 'nodejs';
 
-// Prompt específico para cada tratamento.
-// A instrução de "mantenha o rosto e a iluminação iguais" é o que faz a IA
-// editar SÓ os dentes, sem trocar a pessoa da foto.
-// Prefixo comum: reforça MUITO que é a mesma pessoa e a mesma foto,
-// só editando os dentes. Repetir a instrução de identidade ajuda o modelo
-// a não "recriar" o rosto.
+// Modelo de imagem do Google (apelidado de "Nano Banana"), acessado pela API
+// gratuita do Google AI Studio. É conhecido justamente por preservar bem o
+// rosto/identidade da pessoa ao editar a imagem.
+const GEMINI_MODEL = 'gemini-2.5-flash-image';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+// Reforço de identidade: repetido em todos os prompts pra evitar que o
+// modelo "recrie" o rosto em vez de só editar o sorriso.
 const identityGuard =
-  'IMPORTANTE: esta é uma edição pontual, não uma imagem nova. Mantenha 100% idêntico: a identidade e o rosto da mesma pessoa da foto original, o formato dos olhos, nariz, sobrancelhas, pele, cabelo, pose, ângulo da câmera, expressão, roupas, fundo e iluminação. Não rejuvenesça, não maquie, não suavize a pele e não altere nenhum traço facial. A única parte da imagem que pode mudar são os dentes, dentro da boca já aberta no sorriso.';
+  'Esta é uma edição pontual de foto, não uma imagem nova. Mantenha exatamente a mesma pessoa, mesmo rosto, mesmos olhos, nariz, pele, cabelo, pose, ângulo, roupas, fundo e iluminação da foto original. Não rejuvenesça e não altere nenhum outro traço do rosto. Edite apenas os dentes e, se necessário, a gengiva, dentro da boca já sorrindo na foto.';
 
 const treatmentPrompts: Record<string, string> = {
   'Clareamento Dental':
-    `${identityGuard} Ação: deixe os dentes visivelmente mais brancos e uniformes, como um clareamento dental profissional, mantendo o mesmo formato de dente que a pessoa já tem.`,
+    `${identityGuard} Ação: deixe os dentes visivelmente mais brancos e uniformes, como um clareamento dental profissional, mantendo o formato e alinhamento que os dentes já têm.`,
   'Facetas de Porcelana':
-    `${identityGuard} Ação: aplique o efeito de facetas de porcelana: dentes brancos, uniformes, com formato levemente mais alinhado e simétrico.`,
+    `${identityGuard} Ação: substitua a aparência dos dentes por facetas de porcelana: dentes retos, alinhados, com tamanho e formato uniformes entre si, brancos e simétricos, corrigindo qualquer dente torto, desalinhado, gasto, pequeno ou irregular que a pessoa tenha hoje. O resultado deve parecer um sorriso perfeitamente alinhado, como o de um paciente que fez facetas.`,
   'Aparelho Invisível':
-    `${identityGuard} Ação: alinhe levemente os dentes, simulando o resultado de um tratamento com alinhador invisível (dentes mais retos e alinhados).`,
+    `${identityGuard} Ação: alinhe os dentes que estão tortos ou desalinhados, simulando o resultado final de um tratamento com alinhador invisível — dentes mais retos e alinhados entre si, mas mantendo o formato e a cor natural dos dentes da pessoa (sem deixá-los artificialmente brancos como facetas).`,
   'Fechamento de Diastema':
-    `${identityGuard} Ação: feche o espaço entre os dois dentes da frente (diastema), deixando o sorriso com os dentes juntos e alinhados.`,
+    `${identityGuard} Ação: feche completamente o espaço (diastema) entre os dois dentes da frente, deixando-os encostados um no outro e o sorriso com os dentes juntos e alinhados.`,
   'Contorno Gengival':
-    `${identityGuard} Ação: ajuste levemente o contorno da gengiva para deixar o sorriso mais harmônico e proporcional.`,
+    `${identityGuard} Ação: ajuste o contorno da gengiva, corrigindo excesso de gengiva aparente ou assimetria, para deixar o sorriso mais harmônico e proporcional entre dentes e gengiva.`,
 };
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'OPENAI_API_KEY não configurada no servidor.' },
+        { error: 'GEMINI_API_KEY não configurada no servidor.' },
         { status: 500 }
       );
     }
@@ -47,43 +49,52 @@ export async function POST(req: NextRequest) {
 
     const prompt = treatmentPrompts[treatment] ?? treatmentPrompts['Clareamento Dental'];
 
-    const openaiForm = new FormData();
-    openaiForm.append('model', 'gpt-image-1');
-    openaiForm.append('image', file, file.name || 'foto.png');
-    openaiForm.append('prompt', prompt);
-    openaiForm.append('size', 'auto');
-    openaiForm.append('quality', 'medium'); // "low" | "medium" | "high" — medium é um bom custo/benefício pro protótipo
-    openaiForm.append('input_fidelity', 'high'); // crucial: preserva rosto/identidade na edição (custa um pouco mais de tokens)
-    openaiForm.append('n', '1');
+    // Converte a imagem enviada para base64 (formato que a API do Gemini espera)
+    const arrayBuffer = await file.arrayBuffer();
+    const base64Image = Buffer.from(arrayBuffer).toString('base64');
+    const mimeType = file.type || 'image/jpeg';
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/images/edits', {
+    const geminiResponse = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: openaiForm,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: base64Image } },
+            ],
+          },
+        ],
+      }),
     });
 
-    if (!openaiResponse.ok) {
-      const errText = await openaiResponse.text();
-      console.error('Erro da OpenAI:', errText);
+    if (!geminiResponse.ok) {
+      const errText = await geminiResponse.text();
+      console.error('Erro da Gemini API:', errText);
       return NextResponse.json(
         { error: 'Não foi possível gerar a simulação agora. Tente novamente.' },
         { status: 502 }
       );
     }
 
-    const data = await openaiResponse.json();
-    const base64 = data?.data?.[0]?.b64_json;
+    const data = await geminiResponse.json();
 
-    if (!base64) {
+    // Procura a parte da resposta que contém a imagem gerada
+    const parts = data?.candidates?.[0]?.content?.parts ?? [];
+    const imagePart = parts.find((p: any) => p.inlineData || p.inline_data);
+    const inline = imagePart?.inlineData ?? imagePart?.inline_data;
+
+    if (!inline?.data) {
+      console.error('Resposta sem imagem:', JSON.stringify(data).slice(0, 500));
       return NextResponse.json(
-        { error: 'A IA não retornou uma imagem válida.' },
+        { error: 'A IA não retornou uma imagem válida. Tente outra foto.' },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({ image: `data:image/png;base64,${base64}` });
+    const outMime = inline.mimeType ?? inline.mime_type ?? 'image/png';
+    return NextResponse.json({ image: `data:${outMime};base64,${inline.data}` });
   } catch (err) {
     console.error('Erro inesperado em /api/simulate:', err);
     return NextResponse.json(
