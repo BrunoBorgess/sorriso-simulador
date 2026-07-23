@@ -6,17 +6,23 @@ export const runtime = 'nodejs';
 // Prompt específico para cada tratamento.
 // A instrução de "mantenha o rosto e a iluminação iguais" é o que faz a IA
 // editar SÓ os dentes, sem trocar a pessoa da foto.
+// Prefixo comum: reforça MUITO que é a mesma pessoa e a mesma foto,
+// só editando os dentes. Repetir a instrução de identidade ajuda o modelo
+// a não "recriar" o rosto.
+const identityGuard =
+  'IMPORTANTE: esta é uma edição pontual, não uma imagem nova. Mantenha 100% idêntico: a identidade e o rosto da mesma pessoa da foto original, o formato dos olhos, nariz, sobrancelhas, pele, cabelo, pose, ângulo da câmera, expressão, roupas, fundo e iluminação. Não rejuvenesça, não maquie, não suavize a pele e não altere nenhum traço facial. A única parte da imagem que pode mudar são os dentes, dentro da boca já aberta no sorriso.';
+
 const treatmentPrompts: Record<string, string> = {
   'Clareamento Dental':
-    'Nesta foto de uma pessoa sorrindo, deixe os dentes visivelmente mais brancos e uniformes, como um clareamento dental profissional. Mantenha exatamente o mesmo rosto, a mesma pessoa, o mesmo enquadramento, a mesma iluminação e o mesmo fundo da foto original. Não altere mais nada além da cor dos dentes.',
+    `${identityGuard} Ação: deixe os dentes visivelmente mais brancos e uniformes, como um clareamento dental profissional, mantendo o mesmo formato de dente que a pessoa já tem.`,
   'Facetas de Porcelana':
-    'Nesta foto de uma pessoa sorrindo, aplique o efeito de facetas de porcelana nos dentes: dentes brancos, uniformes, com formato levemente mais alinhado e simétrico. Mantenha exatamente o mesmo rosto, a mesma pessoa, o mesmo enquadramento, a mesma iluminação e o mesmo fundo da foto original.',
+    `${identityGuard} Ação: aplique o efeito de facetas de porcelana: dentes brancos, uniformes, com formato levemente mais alinhado e simétrico.`,
   'Aparelho Invisível':
-    'Nesta foto de uma pessoa sorrindo, alinhe levemente os dentes, simulando o resultado de um tratamento com alinhador invisível (dentes mais retos e alinhados). Mantenha exatamente o mesmo rosto, a mesma pessoa, o mesmo enquadramento, a mesma iluminação e o mesmo fundo da foto original.',
+    `${identityGuard} Ação: alinhe levemente os dentes, simulando o resultado de um tratamento com alinhador invisível (dentes mais retos e alinhados).`,
   'Fechamento de Diastema':
-    'Nesta foto de uma pessoa sorrindo, feche o espaço entre os dois dentes da frente (diastema), deixando o sorriso com os dentes juntos e alinhados. Mantenha exatamente o mesmo rosto, a mesma pessoa, o mesmo enquadramento, a mesma iluminação e o mesmo fundo da foto original.',
+    `${identityGuard} Ação: feche o espaço entre os dois dentes da frente (diastema), deixando o sorriso com os dentes juntos e alinhados.`,
   'Contorno Gengival':
-    'Nesta foto de uma pessoa sorrindo, ajuste levemente o contorno da gengiva para deixar o sorriso mais harmônico e proporcional. Mantenha exatamente o mesmo rosto, a mesma pessoa, o mesmo enquadramento, a mesma iluminação e o mesmo fundo da foto original.',
+    `${identityGuard} Ação: ajuste levemente o contorno da gengiva para deixar o sorriso mais harmônico e proporcional.`,
 };
 
 export async function POST(req: NextRequest) {
@@ -47,6 +53,7 @@ export async function POST(req: NextRequest) {
     openaiForm.append('prompt', prompt);
     openaiForm.append('size', 'auto');
     openaiForm.append('quality', 'medium'); // "low" | "medium" | "high" — medium é um bom custo/benefício pro protótipo
+    openaiForm.append('input_fidelity', 'high'); // crucial: preserva rosto/identidade na edição (custa um pouco mais de tokens)
     openaiForm.append('n', '1');
 
     const openaiResponse = await fetch('https://api.openai.com/v1/images/edits', {
