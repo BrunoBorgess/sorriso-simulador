@@ -3,54 +3,83 @@
 import React, { useState, useRef } from 'react';
 import {
   Upload, Sparkles, Check, ChevronLeft, ChevronRight, User,
-  Image as ImageIcon, RefreshCcw, PhoneIcon, Smile, AlertCircle
+  Image as ImageIcon, RefreshCcw, PhoneIcon, AlertCircle
 } from 'lucide-react';
+
+const MAX_DIMENSION = 1440; // redimensiona fotos grandes antes de enviar
 
 export default function SmileSimulator() {
   const [step, setStep] = useState(1);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null); // foto "antes" mostrada na tela
-  const [imageFile, setImageFile] = useState<File | null>(null);     // arquivo real que vai pra API
-  const [selectedTreatment, setSelectedTreatment] = useState('Clareamento Dental');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [resultImage, setResultImage] = useState<string | null>(null); // foto "depois" vinda da IA
+  const [resultImage, setResultImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sliderPosition, setSliderPosition] = useState(50);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Imagem de exemplo caso o cliente não queira enviar foto
   const mockBeforeImage = "https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&q=80&w=800&h=600";
 
-  const treatments = [
-    { id: 'clareamento', name: 'Clareamento Dental' },
-    { id: 'facetas', name: 'Facetas de Porcelana' },
-    { id: 'aparelho', name: 'Aparelho Invisível' },
-    { id: 'diastema', name: 'Fechamento de Diastema' },
-    { id: 'gengival', name: 'Contorno Gengival' },
-  ];
+  const resizeImage = (blob: Blob, fileName: string): Promise<File> =>
+    new Promise((resolve, reject) => {
+      const img = new window.Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas não suportado.'));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (outBlob) => {
+            if (!outBlob) return reject(new Error('Falha ao processar a imagem.'));
+            resolve(new File([outBlob], fileName, { type: 'image/jpeg' }));
+          },
+          'image/jpeg',
+          0.88
+        );
+      };
+      img.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+      img.src = url;
+    });
+
+  const setImage = async (blob: Blob, fileName: string) => {
+    setError(null);
+    try {
+      const resized = await resizeImage(blob, fileName);
+      setImageFile(resized);
+      setPreviewUrl(URL.createObjectURL(resized));
+      setResultImage(null);
+      setStep(2);
+    } catch {
+      setError('Não foi possível processar essa imagem. Tente outra foto.');
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-      setResultImage(null);
-      setError(null);
-      setStep(2);
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Formato não suportado. Envie uma foto JPG, PNG ou WEBP.');
+      return;
     }
+    if (file.size > 15 * 1024 * 1024) {
+      setError('Imagem muito grande (máx. 15MB).');
+      return;
+    }
+    setImage(file, file.name);
   };
 
   const handleUseExample = async () => {
     setError(null);
     try {
-      // baixa a imagem de exemplo e transforma em File pra poder mandar pra API
       const res = await fetch(mockBeforeImage);
       const blob = await res.blob();
-      const file = new File([blob], 'exemplo.jpg', { type: blob.type || 'image/jpeg' });
-      setImageFile(file);
-      setPreviewUrl(URL.createObjectURL(blob));
-      setResultImage(null);
-      setStep(2);
+      await setImage(blob, 'exemplo.jpg');
     } catch {
       setError('Não foi possível carregar a foto de exemplo. Tente enviar sua própria foto.');
     }
@@ -64,14 +93,11 @@ export default function SmileSimulator() {
     try {
       const formData = new FormData();
       formData.append('image', imageFile);
-      formData.append('treatment', selectedTreatment);
 
       const res = await fetch('/api/simulate', { method: 'POST', body: formData });
       const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data?.error || 'Falha ao gerar simulação.');
-      }
+      if (!res.ok) throw new Error(data?.error || 'Falha ao gerar simulação.');
 
       setResultImage(data.image);
       setSliderPosition(50);
@@ -97,14 +123,13 @@ export default function SmileSimulator() {
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans text-gray-800" style={{ colorScheme: 'light' }}>
       <div className="max-w-7xl mx-auto">
 
-        {/* Cabeçalho */}
         <div className="mb-10">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-gray-900">
-            Simule seu <br />
-            <span className="text-green-600">novo sorriso</span>
+            Simule suas <br />
+            <span className="text-green-600">lentes de porcelana</span>
           </h1>
           <p className="text-gray-500 max-w-md text-base sm:text-lg">
-            Veja como seu sorriso pode ficar com nossos tratamentos estéticos, gerado por inteligência artificial a partir da sua própria foto.
+            Veja como seu sorriso pode ficar com lentes de porcelana, gerado por inteligência artificial a partir da sua própria foto.
           </p>
         </div>
 
@@ -113,11 +138,10 @@ export default function SmileSimulator() {
           {/* LADO ESQUERDO: Controles */}
           <div className="space-y-6">
 
-            {/* Nav de Passos */}
             <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
               {[
                 { num: 1, label: 'Envie sua foto' },
-                { num: 2, label: 'Escolha o tratamento' },
+                { num: 2, label: 'Gerar simulação' },
                 { num: 3, label: 'Resultado' }
               ].map((s) => (
                 <div key={s.num} className={`flex items-center gap-2 ${step >= s.num ? 'text-green-600 font-semibold' : 'text-gray-400'}`}>
@@ -130,16 +154,14 @@ export default function SmileSimulator() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Área de Upload */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center relative overflow-hidden">
                 <input
                   type="file"
-                  accept="image/png, image/jpeg"
+                  accept="image/png, image/jpeg, image/webp"
                   className="hidden"
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                 />
-
                 <div
                   onClick={() => !previewUrl && fileInputRef.current?.click()}
                   className={`w-full h-48 border-2 border-dashed rounded-xl flex flex-col items-center justify-center mb-4 transition-colors ${previewUrl ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100 cursor-pointer'}`}
@@ -147,10 +169,7 @@ export default function SmileSimulator() {
                   {previewUrl ? (
                     <div className="relative w-full h-full p-2">
                       <img src={previewUrl} alt="Preview" className="w-full h-full object-cover rounded-lg" />
-                      <button
-                        onClick={(e) => { e.stopPropagation(); resetSimulation(); }}
-                        className="absolute top-4 right-4 bg-white/90 p-1.5 rounded-full text-red-500 hover:bg-white shadow-sm"
-                      >
+                      <button onClick={(e) => { e.stopPropagation(); resetSimulation(); }} className="absolute top-4 right-4 bg-white/90 p-1.5 rounded-full text-red-500 hover:bg-white shadow-sm">
                         <RefreshCcw className="w-4 h-4" />
                       </button>
                     </div>
@@ -158,23 +177,20 @@ export default function SmileSimulator() {
                     <>
                       <Upload className="w-8 h-8 text-green-600 mb-2" />
                       <p className="font-semibold text-gray-700">Clique para enviar sua foto</p>
-                      <p className="text-xs text-gray-400 mt-2">JPG, PNG • Máx: 10MB</p>
+                      <p className="text-xs text-gray-400 mt-2">JPG, PNG, WEBP • Máx: 15MB</p>
                     </>
                   )}
                 </div>
-
                 <div className="flex items-center w-full gap-4 my-2">
                   <div className="h-px bg-gray-200 flex-1"></div>
                   <span className="text-xs text-gray-400 uppercase">ou</span>
                   <div className="h-px bg-gray-200 flex-1"></div>
                 </div>
-
                 <button onClick={handleUseExample} className="w-full py-2 flex items-center justify-center gap-2 border border-green-600 text-green-600 rounded-lg font-medium hover:bg-green-50 transition">
                   <User className="w-4 h-4" /> Usar foto de exemplo
                 </button>
               </div>
 
-              {/* Dicas */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
                 <div>
                   <h3 className="font-semibold text-gray-800 mb-4 text-sm">Dicas para uma melhor simulação</h3>
@@ -189,28 +205,6 @@ export default function SmileSimulator() {
               </div>
             </div>
 
-            {/* Tratamentos */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="font-semibold text-gray-800 mb-4">Escolha o tratamento desejado</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {treatments.map((trat) => (
-                  <button
-                    key={trat.id}
-                    onClick={() => { setSelectedTreatment(trat.name); setStep(Math.max(step, 2)); }}
-                    className={`relative p-3 rounded-xl border text-sm font-medium flex flex-col items-center text-center transition-all ${selectedTreatment === trat.name ? 'border-green-600 bg-green-50 text-green-800 shadow-sm' : 'border-gray-200 hover:border-green-300 text-gray-600'}`}
-                  >
-                    {selectedTreatment === trat.name && (
-                      <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-0.5 shadow-sm">
-                        <Check className="w-4 h-4" />
-                      </div>
-                    )}
-                    <Smile className={`w-8 h-8 mb-2 ${selectedTreatment === trat.name ? 'text-green-600' : 'text-gray-400'}`} />
-                    {trat.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {error && (
               <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm p-4 rounded-xl">
                 <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -218,7 +212,6 @@ export default function SmileSimulator() {
               </div>
             )}
 
-            {/* Botão Gerar */}
             <button
               onClick={handleSimulate}
               disabled={!imageFile || isGenerating}
@@ -227,7 +220,7 @@ export default function SmileSimulator() {
               {isGenerating ? (
                 <><RefreshCcw className="w-5 h-5 animate-spin" /> Aplicando Inteligência Artificial...</>
               ) : (
-                <><Sparkles className="w-5 h-5" /> Gerar simulação do sorriso</>
+                <><Sparkles className="w-5 h-5" /> Gerar simulação das lentes de porcelana</>
               )}
             </button>
           </div>
@@ -254,51 +247,33 @@ export default function SmileSimulator() {
               </div>
             ) : (
               <div className="space-y-6">
-
-                {/* Slider Antes/Depois com a foto original e a foto gerada pela IA */}
                 <div className="relative w-full h-[300px] sm:h-[400px] rounded-2xl overflow-hidden select-none bg-gray-100">
-
-                  {/* Imagem DEPOIS (Fundo) -> resultado real gerado pela IA */}
-                  <img
-                    src={resultImage}
-                    alt="Depois"
-                    className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-                  />
-
-                  {/* Imagem ANTES (Sobreposição cortada) -> foto original */}
+                  <img src={resultImage} alt="Depois" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
                   <img
                     src={previewUrl!}
                     alt="Antes"
                     className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                     style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
                   />
-
-                  {/* Input Range Invisível (Controle real) */}
                   <input
                     type="range" min="0" max="100"
                     value={sliderPosition}
                     onChange={(e) => setSliderPosition(Number(e.target.value))}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20"
                   />
-
-                  {/* Linha divisória */}
                   <div className="absolute top-0 bottom-0 w-1 bg-white z-10 pointer-events-none" style={{ left: `${sliderPosition}%` }}>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-full p-2 shadow-[0_0_15px_rgba(0,0,0,0.3)] flex items-center justify-center">
                       <ChevronLeft className="w-4 h-4 text-gray-700" />
                       <ChevronRight className="w-4 h-4 text-gray-700" />
                     </div>
                   </div>
-
-                  {/* Badges */}
                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm font-bold text-gray-700 z-10 pointer-events-none shadow-sm">Antes</div>
                   <div className="absolute top-4 right-4 bg-green-600 px-3 py-1.5 rounded-lg text-sm font-bold text-white z-10 pointer-events-none shadow-sm">Depois</div>
                 </div>
 
-                {/* Call to Action */}
                 <div className="bg-gray-50 rounded-2xl p-6 text-center">
                   <h3 className="text-lg font-bold text-gray-900 mb-2">Gostou de ver na sua própria foto?</h3>
                   <p className="text-sm text-gray-600 mb-6">Agende uma avaliação com nossos especialistas e descubra o melhor tratamento para você.</p>
-
                   <button className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors mb-3">
                     <PhoneIcon className="w-5 h-5" /> Agendar avaliação pelo WhatsApp
                   </button>
