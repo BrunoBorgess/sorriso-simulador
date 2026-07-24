@@ -23,7 +23,7 @@ async function callOpenAI(base64Image: string, mimeType: string, fileName: strin
   openaiForm.append('image', new File([Buffer.from(base64Image, 'base64')], fileName, { type: mimeType }));
   openaiForm.append('prompt', PROMPT);
   openaiForm.append('size', 'auto'); // preserva melhor a proporção/enquadramento original
-  openaiForm.append('quality', 'high'); // mais qualidade/força de edição pra garantir mudança visível
+  openaiForm.append('quality', 'medium'); // "high" demora mais e corre risco de estourar o timeout da Vercel
   openaiForm.append('input_fidelity', 'high'); // preserva rosto/identidade
 
   return fetch('https://api.openai.com/v1/images/edits', {
