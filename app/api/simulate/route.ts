@@ -15,11 +15,11 @@ Mantenha exatamente: a mesma pessoa e o mesmo rosto, os mesmos olhos, nariz, pel
 
 Enquadramento: não corte a imagem, não altere o zoom, não mova nem redimensione a pessoa dentro do quadro, não gire nem incline a foto. A saída deve ter exatamente a mesma composição, os mesmos limites de borda, a mesma proporção e o mesmo enquadramento da imagem de entrada.
 
-Ação (aplique de forma clara e visível, não sutil): substitua a aparência dos dentes por lentes de contato dental de porcelana. Os dentes devem ficar: bem brancos (tom branco natural de porcelana, tipo BL1/BL2, não cinza nem amarelado), com formato retangular uniforme, todos do mesmo tamanho e alinhados perfeitamente em linha reta, sem nenhum dente torto, sem espaçamento entre eles, sem sobreposição. Corrija qualquer imperfeição que os dentes tenham hoje: dentes tortos, desalinhados, gastos, pequenos, escuros ou com espaçamento — o resultado final deve ser visivelmente diferente do original, como um sorriso de resultado de tratamento odontológico estético profissional.
+Ação (aplique de forma clara e visível, não sutil): coloque lentes de contato dental de porcelana nos dentes da pessoa, como um resultado de harmonização orofacial. Os dentes devem ficar brancos (tom natural de porcelana, não cinza nem amarelado), alinhados e uniformes entre si.
 
-Cuidado com a anatomia (muito importante para não parecer artificial): mantenha a anatomia natural do dente humano — os incisivos centrais (os dois da frente) devem ser levemente maiores que os incisivos laterais ao lado, e os caninos devem ter a ponta discretamente mais afiada, não quadrada. As bordas incisais devem ter uma leve translucidez natural (mais transparente/acinzentada bem sutil na pontinha), não um branco 100% opaco e chapado. Não deixe os dentes com aparência de dentadura, chiclete ou "piano key" (todos idênticos e planos) — deve parecer um trabalho odontológico real, não uma textura genérica. Mantenha o mesmo número de dentes visíveis que aparecem na foto original (não adicione nem remova dentes) e mantenha o encontro natural entre os dentes de cima e de baixo, sem deformar o lábio, o sorriso ou a gengiva.
+Muito importante — proporção: os dentes precisam ficar do TAMANHO PRÓPRIO da boca dessa pessoa, respeitando a largura do sorriso e o espaço entre os lábios dela. Não deixe os dentes maiores, mais largos ou mais compridos do que cabe naturalmente na boca da pessoa. O resultado deve parecer harmônico e natural para o rosto dela, não genérico — cada pessoa tem uma arcada diferente, então baseie o tamanho e o formato no que já existe na foto, só corrigindo cor, alinhamento e uniformidade.
 
-A única parte da imagem que muda são os dentes dentro da boca já sorrindo na foto — todo o resto permanece idêntico.`;
+A única parte da imagem que muda são os dentes dentro da boca já sorrindo na foto — todo o resto (rosto, lábios, gengiva, proporções) permanece idêntico.`;
 
 async function callOpenAI(base64Image: string, mimeType: string, fileName: string) {
   const openaiForm = new FormData();
@@ -27,7 +27,7 @@ async function callOpenAI(base64Image: string, mimeType: string, fileName: strin
   openaiForm.append('image', new File([Buffer.from(base64Image, 'base64')], fileName, { type: mimeType }));
   openaiForm.append('prompt', PROMPT);
   openaiForm.append('size', 'auto'); // preserva melhor a proporção/enquadramento original
-  openaiForm.append('quality', 'medium'); // Fluid Compute ativo = sem risco de timeout, então priorizamos qualidade/detalhe
+  openaiForm.append('quality', 'medium'); // "high" tava pesado demais / dando timeout de novo
   openaiForm.append('input_fidelity', 'high'); // preserva rosto/identidade
 
   return fetch('https://api.openai.com/v1/images/edits', {
